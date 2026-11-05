@@ -2,7 +2,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from pathlib import Path
 
 # ---------------------------------
 # 페이지 설정
@@ -22,142 +21,57 @@ st.markdown(
 st.divider()
 
 # ---------------------------------
-# CSV 파일 자동 검색
+# 데이터 직접 입력
+# CSV 파일 없이 실행 가능
 # ---------------------------------
-BASE_DIR = Path(__file__).resolve().parent
+data = {
+    "연도": [
+        2012, 2013, 2014, 2015, 2016, 2017, 2018,
+        2019, 2020, 2021, 2022, 2023, 2024
+    ],
 
+    "뛰거나걷는소리": [
+        1338, 2383, 3190, 3423, 4509, 6359, 6984,
+        4956, 7456, 6299, 5515, 5098, 5204
+    ],
 
-def find_csv_file():
-    # 프로젝트 폴더와 하위 폴더에서 CSV 검색
-    csv_files = [
-        p for p in BASE_DIR.rglob("*")
-        if p.is_file()
-        and p.suffix.lower() == ".csv"
-        and not any(part.startswith(".") for part in p.parts)
+    "망치질": [
+        67, 170, 180, 171, 235, 317, 494,
+        385, 569, 659, 648, 729, 907
+    ],
+
+    "가구(끌거나찍는행위)": [
+        44, 90, 170, 160, 208, 303, 368,
+        326, 555, 450, 403, 318, 326
+    ],
+
+    "문개폐": [
+        24, 50, 93, 101, 127, 170, 221,
+        127, 271, 229, 199, 160, 188
+    ],
+
+    "가전제품(TV청소기세탁기)": [
+        36, 80, 140, 152, 239, 316, 404,
+        223, 109, 220, 240, 260, 214
+    ],
+
+    "악기(피아노등)": [
+        39, 66, 82, 88, 126, 148, 147,
+        99, 132, 92, 61, 58, 63
+    ],
+
+    "기타": [
+        281, 432, 610, 617, 862, 1613, 1524,
+        1855, 3047, 1262, 705, 441, 131
     ]
+}
 
-    # 층간소음 관련 파일을 우선 검색
-    matched_files = [
-        p for p in csv_files
-        if "층간소음" in p.name
-        and "원인" in p.name
-    ]
+df = pd.DataFrame(data)
 
-    if len(matched_files) == 1:
-        return matched_files[0]
+causes = list(data.keys())[1:]
 
-    if len(matched_files) > 1:
-        raise ValueError(
-            "층간소음 관련 CSV 파일이 여러 개 발견되었습니다: "
-            + ", ".join(p.name for p in matched_files)
-        )
-
-    # 관련 이름이 없고 CSV가 하나뿐이면 해당 파일 사용
-    if len(csv_files) == 1:
-        return csv_files[0]
-
-    if len(csv_files) == 0:
-        raise FileNotFoundError(
-            "프로젝트 폴더에서 CSV 파일을 찾을 수 없습니다. "
-            "GitHub 저장소에 CSV 파일을 업로드했는지 확인해 주세요."
-        )
-
-    raise ValueError(
-        "CSV 파일이 여러 개 발견되었습니다. "
-        "파일 이름에 '층간소음'과 '원인'을 포함해 주세요. "
-        "발견된 파일: "
-        + ", ".join(p.name for p in csv_files)
-    )
-
-
-# ---------------------------------
-# 데이터 불러오기
-# ---------------------------------
-@st.cache_data
-def load_data(file_path):
-
-    # 한글 파일 인코딩 대응
-    encodings = ["utf-8-sig", "cp949", "euc-kr"]
-
-    data = None
-
-    for encoding in encodings:
-        try:
-            data = pd.read_csv(
-                file_path,
-                encoding=encoding
-            )
-            break
-        except UnicodeDecodeError:
-            continue
-
-    if data is None:
-        raise ValueError(
-            "CSV 파일의 인코딩을 확인할 수 없습니다."
-        )
-
-    data.columns = data.columns.str.strip()
-
-    required_columns = [
-        "연도",
-        "뛰거나걷는소리",
-        "망치질",
-        "가구(끌거나찍는행위)",
-        "문개폐",
-        "가전제품(TV청소기세탁기)",
-        "악기(피아노등)",
-        "기타"
-    ]
-
-    missing_columns = [
-        col for col in required_columns
-        if col not in data.columns
-    ]
-
-    if missing_columns:
-        raise ValueError(
-            f"CSV에 필요한 열이 없습니다: {missing_columns}"
-        )
-
-    data = data[required_columns].copy()
-
-    data["연도"] = pd.to_numeric(
-        data["연도"],
-        errors="coerce"
-    )
-
-    for col in required_columns[1:]:
-        data[col] = pd.to_numeric(
-            data[col],
-            errors="coerce"
-        ).fillna(0)
-
-    data = data.dropna(subset=["연도"])
-
-    data["연도"] = data["연도"].astype(int)
-
-    data = data.sort_values("연도").reset_index(drop=True)
-
-    causes = required_columns[1:]
-
-    data["전체 발생 횟수"] = data[causes].sum(axis=1)
-
-    return data, causes
-
-
-# ---------------------------------
-# 데이터 로딩 실행
-# ---------------------------------
-try:
-    csv_path = find_csv_file()
-    df, causes = load_data(str(csv_path))
-
-    st.success(f"데이터 불러오기 성공: {csv_path.name}")
-
-except Exception as e:
-    st.error(f"데이터를 불러오는 중 오류가 발생했습니다: {e}")
-    st.stop()
-
+# 전체 발생 횟수 계산
+df["전체 발생 횟수"] = df[causes].sum(axis=1)
 
 # ---------------------------------
 # 주요 정보
@@ -198,14 +112,13 @@ col4.metric(
 
 st.divider()
 
-
 # ---------------------------------
 # 1. 연도별 전체 발생 횟수
 # ---------------------------------
 st.subheader("1. 연도별 전체 층간소음 발생 횟수")
 
 st.write(
-    "2012년부터 2024년까지 전체 층간소음 발생 횟수의 "
+    "2012년부터 2024년까지 층간소음 발생 횟수의 "
     "변화를 확인할 수 있습니다."
 )
 
@@ -240,6 +153,7 @@ st.plotly_chart(
     use_container_width=True
 )
 
+# 2012년과 2024년 비교
 first_count = int(df.iloc[0]["전체 발생 횟수"])
 last_count = int(df.iloc[-1]["전체 발생 횟수"])
 
@@ -248,13 +162,13 @@ change_rate = change / first_count * 100
 
 if change > 0:
     st.info(
-        f"2012년보다 2024년의 발생 횟수가 "
+        f"2012년과 비교했을 때 2024년의 발생 횟수는 "
         f"{change:,}회 증가했습니다. "
         f"증가율은 {change_rate:.1f}%입니다."
     )
 elif change < 0:
     st.info(
-        f"2012년보다 2024년의 발생 횟수가 "
+        f"2012년과 비교했을 때 2024년의 발생 횟수는 "
         f"{abs(change):,}회 감소했습니다. "
         f"감소율은 {abs(change_rate):.1f}%입니다."
     )
@@ -262,7 +176,6 @@ else:
     st.info("2012년과 2024년의 발생 횟수가 같습니다.")
 
 st.divider()
-
 
 # ---------------------------------
 # 2. 원인별 발생 횟수
@@ -301,7 +214,6 @@ st.plotly_chart(
 )
 
 st.divider()
-
 
 # ---------------------------------
 # 3. 원인별 변화 추이
@@ -351,9 +263,8 @@ st.metric(
 
 st.divider()
 
-
 # ---------------------------------
-# 4. 원인별 누적 발생 횟수
+# 4. 원인별 누적 발생 횟수 비교
 # ---------------------------------
 st.subheader("4. 원인별 누적 발생 횟수 비교")
 
@@ -399,9 +310,8 @@ st.plotly_chart(
 
 st.divider()
 
-
 # ---------------------------------
-# 5. 원본 데이터
+# 5. 원본 데이터 확인
 # ---------------------------------
 st.subheader("5. 연도별 원본 데이터")
 
@@ -411,6 +321,7 @@ st.dataframe(
     hide_index=True
 )
 
+# 데이터 다운로드
 csv_data = df.to_csv(
     index=False,
     encoding="utf-8-sig"
