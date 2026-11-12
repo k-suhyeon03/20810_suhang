@@ -1,9 +1,9 @@
-import pandas as pd
 import streamlit as st
+import pandas as pd
 import plotly.express as px
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
-from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import LeaveOneOut
 from sklearn.metrics import (
@@ -11,175 +11,264 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     f1_score,
-    hamming_loss,
+    hamming_loss
 )
 
-# ---------------------------------------------------------
-# 기본 설정
-# ---------------------------------------------------------
+# --------------------------------------------------
+# 페이지 설정
+# --------------------------------------------------
+
 st.set_page_config(
     page_title="층간소음 데이터 분석",
-    page_icon="🏠",
-    layout="wide",
+    page_icon="🏢",
+    layout="wide"
 )
-st.title("🏠 층간소음 데이터 분석")
-st.caption("연도별 층간소음 원인 통계 분석 및 건축적 해결 방안 다중 레이블 분류")
 
-# ---------------------------------------------------------
-# 1. 데이터 불러오기
-# ---------------------------------------------------------
-# 사용자가 제공한 한국환경공단 CSV의 실제 값
+st.title("🏢 층간소음 데이터 분석 및 해결 방안")
+
+st.write("""
+아파트와 같은 공동주택에서는 걷거나 뛰는 소리, 가구를 끄는 소리,
+가전제품 작동 소리 등 다양한 층간소음이 발생한다.
+
+이 웹앱에서는 한국환경공단의 층간소음 원인별 분석 데이터를 활용하여
+2012년부터 2024년까지의 층간소음 발생 추이와 원인별 비율을 살펴보고,
+건축적인 해결 방안도 함께 알아본다.
+""")
+
+st.markdown("---")
+
+
+# --------------------------------------------------
+# 데이터 입력
+# --------------------------------------------------
+
 data = {
     "연도": list(range(2012, 2025)),
-    "뛰거나걷는소리": [1338, 2383, 3190, 3423, 4509, 6359, 6984, 4956, 7456, 6299, 5515, 5098, 5204],
-    "망치질": [67, 170, 180, 171, 235, 317, 494, 385, 569, 659, 648, 729, 907],
-    "가구(끌거나찍는행위)": [44, 90, 170, 160, 208, 303, 368, 326, 555, 450, 403, 318, 326],
-    "문개폐": [24, 50, 93, 101, 127, 170, 221, 127, 271, 229, 199, 160, 188],
-    "가전제품(TV청소기세탁기)": [36, 80, 140, 152, 239, 316, 404, 223, 109, 220, 240, 260, 214],
-    "악기(피아노등)": [39, 66, 82, 88, 126, 148, 147, 99, 132, 92, 61, 58, 63],
-    "기타": [281, 432, 610, 617, 862, 1613, 1524, 1855, 3047, 1262, 705, 441, 131],
+    "뛰거나 걷는 소리": [
+        1338, 2383, 3190, 3423, 4509, 6359, 6984,
+        4956, 7456, 6299, 5515, 5098, 5204
+    ],
+    "망치질": [
+        67, 170, 180, 171, 235, 317, 494,
+        385, 569, 659, 648, 729, 907
+    ],
+    "가구(끌거나 찍는 행위)": [
+        44, 90, 170, 160, 208, 303, 368,
+        326, 555, 450, 403, 318, 326
+    ],
+    "문 개폐": [
+        24, 50, 93, 101, 127, 170, 221,
+        127, 271, 229, 199, 160, 188
+    ],
+    "가전제품(TV·청소기·세탁기)": [
+        36, 80, 140, 152, 239, 316, 404,
+        223, 109, 220, 240, 260, 214
+    ],
+    "악기(피아노 등)": [
+        39, 66, 82, 88, 126, 148, 147,
+        99, 132, 92, 61, 58, 63
+    ],
+    "기타": [
+        281, 432, 610, 617, 862, 1613, 1524,
+        1855, 3047, 1262, 705, 441, 131
+    ]
 }
+
 df = pd.DataFrame(data)
 
-cause_names = {
-    "뛰거나걷는소리": "뛰거나 걷는 소리",
-    "망치질": "망치질",
-    "가구(끌거나찍는행위)": "가구 끌기 및 찍는 소리",
-    "문개폐": "문 개폐 소리",
-    "가전제품(TV청소기세탁기)": "가전제품 소리",
-    "악기(피아노등)": "악기 소리",
-    "기타": "기타",
-}
-cause_cols = list(cause_names.keys())
-cause_list = list(cause_names.values())
+causes = [
+    "뛰거나 걷는 소리",
+    "망치질",
+    "가구(끌거나 찍는 행위)",
+    "문 개폐",
+    "가전제품(TV·청소기·세탁기)",
+    "악기(피아노 등)",
+    "기타"
+]
 
-df["전체 발생 건수"] = df[cause_cols].sum(axis=1)
+df["전체 발생 건수"] = df[causes].sum(axis=1)
 
-# ---------------------------------------------------------
-# 2. 데이터 소개 및 요약
-# ---------------------------------------------------------
-st.header("1. 데이터 소개 및 요약")
-st.write(
-    "한국환경공단의 층간소음 원인별 연도별 발생 건수 자료입니다. "
-    "2012년부터 2024년까지 13개 연도의 통계와 7가지 원인 항목을 사용합니다."
-)
 
-a, b, c = st.columns(3)
-a.metric("분석 기간", "2012~2024년")
-b.metric("연도별 기록", f"{len(df)}개")
-c.metric("분류 대상 원인", f"{len(cause_cols)}개")
-st.dataframe(
-    df.rename(columns=cause_names),
-    use_container_width=True,
-    hide_index=True,
-)
+# --------------------------------------------------
+# 그래프 1. 연도별 전체 발생 건수
+# --------------------------------------------------
 
-# ---------------------------------------------------------
-# 3. 층간소음 발생 현황 그래프
-# ---------------------------------------------------------
-st.header("2. 층간소음 발생 현황")
+st.header("1. 연도별 층간소음 발생 추이")
 
-st.subheader("연도별 전체 발생 건수")
-fig = px.line(
+fig1 = px.line(
     df,
     x="연도",
     y="전체 발생 건수",
     markers=True,
-    title="연도별 층간소음 전체 발생 건수",
+    title="2012~2024년 층간소음 전체 발생 건수",
+    labels={"연도": "연도", "전체 발생 건수": "발생 건수"}
 )
-fig.update_layout(xaxis_title="연도", yaxis_title="발생 건수")
-st.plotly_chart(fig, use_container_width=True)
 
-st.subheader("연도별 원인 비율")
-ratio = df[["연도"] + cause_cols].copy()
-totals = ratio[cause_cols].sum(axis=1).replace(0, pd.NA)
-
-for col in cause_cols:
-    ratio[col] = ratio[col].div(totals).fillna(0) * 100
-
-ratio_long = ratio.melt(
-    id_vars="연도",
-    var_name="원인코드",
-    value_name="비율",
+fig1.update_layout(
+    xaxis=dict(tickmode="linear", dtick=1),
+    hovermode="x unified"
 )
-ratio_long["원인"] = ratio_long["원인코드"].map(cause_names)
 
-fig = px.bar(
-    ratio_long,
+st.plotly_chart(fig1, use_container_width=True)
+
+st.write(
+    "연도별 층간소음 발생 건수를 통해 전체적인 발생 추이와 "
+    "증감 변화를 확인할 수 있다."
+)
+
+
+# --------------------------------------------------
+# 그래프 2. 연도별 원인 비율
+# --------------------------------------------------
+
+st.markdown("---")
+st.header("2. 연도별 층간소음 원인 비율")
+
+percent_df = df[causes].div(df[causes].sum(axis=1), axis=0) * 100
+percent_df["연도"] = df["연도"]
+
+fig2 = px.bar(
+    percent_df,
     x="연도",
-    y="비율",
-    color="원인",
-    barmode="stack",
-    title="연도별 층간소음 원인 비율",
+    y=causes,
+    title="연도별 층간소음 원인 비율 (100%)",
+    labels={
+        "연도": "연도",
+        "value": "발생 비율 (%)",
+        "variable": "소음 원인"
+    },
+    barmode="stack"
 )
-fig.update_yaxes(range=[0, 100], title="발생 비율(%)")
-st.plotly_chart(fig, use_container_width=True)
 
-st.subheader("전체 기간 원인별 발생 건수")
+fig2.update_layout(
+    xaxis=dict(tickmode="linear", dtick=1),
+    yaxis_title="발생 비율 (%)",
+    yaxis=dict(range=[0, 100]),
+    legend_title="소음 원인",
+    hovermode="x unified"
+)
+
+st.plotly_chart(fig2, use_container_width=True)
+
+st.write(
+    "각 연도에 발생한 층간소음 중 원인별 비율을 비교하여 "
+    "어떤 소음이 주요 원인인지 살펴볼 수 있다."
+)
+
+
+# --------------------------------------------------
+# 그래프 3. 전체 기간 원인별 발생 건수
+# --------------------------------------------------
+
+st.markdown("---")
+st.header("3. 원인별 전체 층간소음 발생 건수")
+
 cause_total = (
-    df[cause_cols]
+    df[causes]
     .sum()
-    .rename(index=cause_names)
     .sort_values(ascending=False)
-    .rename_axis("원인")
-    .reset_index(name="발생 건수")
+    .reset_index()
 )
-fig = px.bar(
-    cause_total,
-    x="원인",
-    y="발생 건수",
-    color="원인",
-    title="2012~2024년 원인별 누적 발생 건수",
-)
-fig.update_layout(showlegend=False)
-st.plotly_chart(fig, use_container_width=True)
 
-# ---------------------------------------------------------
-# 4. 건축적 해결 방안 소개
-# ---------------------------------------------------------
-st.header("3. 건축적 해결 방안")
+cause_total.columns = ["소음 원인", "전체 발생 건수"]
+
+fig3 = px.bar(
+    cause_total,
+    x="소음 원인",
+    y="전체 발생 건수",
+    title="2012~2024년 원인별 층간소음 발생 건수",
+    labels={
+        "소음 원인": "소음 원인",
+        "전체 발생 건수": "전체 발생 건수"
+    },
+    text="전체 발생 건수"
+)
+
+fig3.update_traces(textposition="outside")
+fig3.update_layout(
+    xaxis_title="소음 원인",
+    yaxis_title="전체 발생 건수",
+    xaxis_tickangle=-20
+)
+
+st.plotly_chart(fig3, use_container_width=True)
+
+st.write(
+    "2012년부터 2024년까지의 데이터를 합산하여 "
+    "어떤 원인으로 인한 층간소음이 가장 많이 발생했는지 비교한다."
+)
+
+
+# --------------------------------------------------
+# 건축적 층간소음 해결 방안
+# --------------------------------------------------
+
+st.markdown("---")
+st.header("🏢 건축적 층간소음 해결 방안")
+
+st.write("""
+건축물의 구조와 건축 자재를 개선하면 층간소음이 다른 공간으로
+전달되는 것을 줄일 수 있다. 다음은 건축 분야에서 활용할 수 있는
+대표적인 층간소음 저감 방법이다.
+""")
 
 solutions = [
-    (
-        "바닥 완충 구조",
-        "바닥 완충재와 충격 저감 구조를 적용해 걷거나 뛰는 행동에서 발생하는 충격 전달을 줄입니다.",
-    ),
-    (
-        "이중벽 및 차음 구조",
-        "벽체 사이 공기층과 차음재를 활용하고 틈새를 막아 공기를 통해 전달되는 소음을 줄입니다.",
-    ),
-    (
-        "천장 방음 구조",
-        "천장 내부에 차음·흡음 구조를 적용합니다. 흡음재만으로 층간 전달음이 모두 차단되는 것은 아닙니다.",
-    ),
-    (
-        "방진 설계",
-        "기계와 설비 하부에 방진재를 설치해 진동이 구조체로 전달되는 정도를 줄입니다.",
-    ),
-    (
-        "흡음재 활용",
-        "실내 벽과 천장에 흡음재를 적용해 반사음과 울림을 줄입니다.",
-    ),
-    (
-        "구조적 진동 전달 저감",
-        "바닥·벽·기둥의 접합부와 진동 전달 경로를 고려해 설계합니다.",
-    ),
+    {
+        "제목": "① 바닥 완충 구조",
+        "내용": "바닥 슬래브 위에 완충재를 설치하고 바닥 마감층을 구성하여 걷거나 뛰는 행동으로 발생하는 충격음이 아래층으로 전달되는 것을 줄인다."
+    },
+    {
+        "제목": "② 이중벽 및 차음 구조",
+        "내용": "벽체 사이에 공기층과 차음재를 설치하는 이중벽 구조를 적용하여 벽을 통해 전달되는 소음을 줄인다."
+    },
+    {
+        "제목": "③ 천장 방음 구조",
+        "내용": "천장 내부에 흡음재와 차음 구조를 적용하여 소음이 실내로 전달되는 것을 줄인다."
+    },
+    {
+        "제목": "④ 방진 설계",
+        "내용": "기계와 설비의 하부에 방진재를 설치하여 작동 과정에서 발생하는 진동이 건물 구조체로 전달되는 것을 줄인다."
+    },
+    {
+        "제목": "⑤ 흡음재 활용",
+        "내용": "벽과 천장 등에 흡음재를 설치하여 실내에서 소리가 반사되어 울리는 현상을 줄인다."
+    },
+    {
+        "제목": "⑥ 구조적 진동 전달 저감",
+        "내용": "건물의 벽체와 바닥, 배관 및 접합부 등을 고려하여 진동과 소음이 다른 공간으로 전달되는 경로를 줄이도록 설계한다."
+    },
+    {
+        "제목": "⑦ 문 충격 저감 구조",
+        "내용": "문틀과 문이 맞닿는 부분에 완충 장치 등을 적용하여 문을 여닫을 때 발생하는 충격과 소음을 줄인다."
+    },
+    {
+        "제목": "⑧ 설비 배치 개선",
+        "내용": "소음과 진동이 발생하는 가전제품 및 설비의 위치를 주거 공간과 침실 등으로부터 적절히 분리하여 소음 전달의 영향을 줄인다."
+    }
 ]
 
-for i in range(0, len(solutions), 2):
-    cols = st.columns(2)
-    for col, (title, desc) in zip(cols, solutions[i:i + 2]):
-        with col:
-            with st.container(border=True):
-                st.markdown(f"**{title}**")
-                st.write(desc)
+cols = st.columns(2)
 
-# ---------------------------------------------------------
-# 5. 사용자가 직접 설정한 원인별 해결 방안 기준
-# ---------------------------------------------------------
-st.header("4. 원인별 건축적 해결 방안 기준")
+for i, item in enumerate(solutions):
+    with cols[i % 2]:
+        with st.container(border=True):
+            st.subheader(item["제목"])
+            st.write(item["내용"])
 
-# 출력 레이블 8개. 아래 순서는 학습 데이터와 예측 결과에서 동일하게 사용합니다.
+
+# --------------------------------------------------
+# 원인별 해결 방안 연결 기준
+# --------------------------------------------------
+
+st.markdown("---")
+st.header("4. 층간소음 원인별 건축적 해결 방안")
+
+st.write("""
+아래 기준은 층간소음 원인에 따라 적용할 수 있다고 판단한 건축적 해결 방안을
+직접 정리한 것이다. 이후 분류 모델은 이 기준을 학습하여 원인에 맞는
+해결 방안을 예측한다.
+""")
+
 solution_labels = [
     "바닥 완충 구조",
     "이중벽 및 차음 구조",
@@ -188,539 +277,520 @@ solution_labels = [
     "방진 설계",
     "설비 배치 개선",
     "흡음재 활용",
-    "구조적 진동 전달 저감",
+    "구조적 진동 전달 저감"
 ]
 
-# 사용자가 직접 정한 기준을 변경하지 않고 그대로 반영합니다.
-cause_to_solutions = {
+mapping = {
     "뛰거나 걷는 소리": [
         "바닥 완충 구조",
-        "구조적 진동 전달 저감",
+        "구조적 진동 전달 저감"
     ],
     "망치질": [
         "이중벽 및 차음 구조",
-        "천장 방음 구조",
+        "천장 방음 구조"
     ],
-    "가구 끌기 및 찍는 소리": [
+    "가구(끌거나 찍는 행위)": [
         "바닥 완충 구조",
-        "천장 방음 구조",
+        "천장 방음 구조"
     ],
-    "문 개폐 소리": [
-        "문 충격 저감 구조",
+    "문 개폐": [
+        "문 충격 저감 구조"
     ],
-    "가전제품 소리": [
+    "가전제품(TV·청소기·세탁기)": [
         "방진 설계",
-        "설비 배치 개선",
+        "설비 배치 개선"
     ],
-    "악기 소리": [
+    "악기(피아노 등)": [
         "이중벽 및 차음 구조",
-        "흡음재 활용",
+        "흡음재 활용"
     ],
     "기타": [
-        "이중벽 및 차음 구조",
-    ],
+        "이중벽 및 차음 구조"
+    ]
 }
 
-# 원인별 정답 레이블을 0과 1로 변환합니다.
-y = pd.DataFrame(
+mapping_df = pd.DataFrame(
     [
         {
-            solution: int(solution in cause_to_solutions[cause])
-            for solution in solution_labels
+            "층간소음 원인": cause,
+            "건축적 해결 방안": ", ".join(mapping[cause])
         }
-        for cause in cause_list
-    ],
-    index=cause_list,
-)
-y.index.name = "층간소음 원인"
-
-st.write(
-    "아래 표는 사용자가 직접 설정한 기준입니다. "
-    "1은 해당 해결 방안을 적용한다는 뜻이고, 0은 적용하지 않는다는 뜻입니다."
-)
-st.dataframe(y, use_container_width=True)
-
-fig = px.imshow(
-    y,
-    text_auto=True,
-    aspect="auto",
-    color_continuous_scale="Blues",
-    labels={
-        "x": "건축적 해결 방안",
-        "y": "층간소음 원인",
-        "color": "적용 여부",
-    },
-    title="원인별 건축적 해결 방안 기준 히트맵",
-)
-fig.update_xaxes(tickangle=-35)
-st.plotly_chart(fig, use_container_width=True)
-
-# ---------------------------------------------------------
-# 6. 다중 레이블 분류용 데이터 구성
-# ---------------------------------------------------------
-st.header("5. 다중 레이블 분류 모델")
-
-st.warning(
-    "데이터의 한계: 기존 한국환경공단 자료에는 연도별 원인 발생 횟수만 있으며, "
-    "건축적 해결 방안의 실제 효과를 나타내는 정답 데이터는 없습니다. "
-    "따라서 이번 모델은 사용자가 직접 설정한 7가지 원인-해결 방안 관계를 학습해 "
-    "그 기준을 재현하는 교육용 모델입니다. 실제 건축물에서 해결 효과를 검증하거나 "
-    "새로운 소음 원인을 진단하는 모델은 아닙니다."
+        for cause in causes
+    ]
 )
 
-# 입력 X: 원인 7가지를 원-핫 인코딩합니다.
-# 각 원인은 서로 다른 입력 특성으로 표현됩니다.
+st.dataframe(mapping_df, use_container_width=True, hide_index=True)
+
+
+# --------------------------------------------------
+# 다중 출력 분류 모델 데이터 구성
+# --------------------------------------------------
+
+st.markdown("---")
+st.header("5. 다중 출력 분류 모델")
+
+st.write("""
+층간소음 원인을 입력하면 그 원인에 해당하는 건축적 해결 방안을 분류하도록
+의사결정나무와 랜덤 포레스트 모델을 구성하였다.
+
+하나의 층간소음 원인에 여러 해결 방안이 연결될 수 있으므로,
+여러 개의 정답을 동시에 예측하는 다중 출력 분류 방식을 사용한다.
+""")
+
+# 원인 7개를 원-핫 인코딩한 입력 데이터
 X = pd.DataFrame(
     [
-        {
-            f"원인_{i + 1}": int(cause == selected_cause)
-            for i, selected_cause in enumerate(cause_list)
-        }
-        for cause in cause_list
+        [1 if cause == selected_cause else 0 for cause in causes]
+        for selected_cause in causes
     ],
-    index=cause_list,
+    columns=causes,
+    index=causes
 )
-X.index.name = "층간소음 원인"
 
-# 출력 y: 8가지 해결 방안 각각의 적용 여부(0/1)
-training_df = X.copy()
-training_df["원인"] = training_df.index
-training_df = training_df[["원인"] + list(X.columns)].join(y)
-
-st.write(
-    f"원인별로 한 행씩 구성하여 총 **{len(X)}개 데이터**를 사용합니다. "
-    "연도별 통계 행을 복제해 학습 표본 수를 부풀리지 않습니다."
+# 원인별 해결 방안을 0과 1로 표현한 정답 데이터
+y = pd.DataFrame(
+    [
+        [1 if label in mapping[cause] else 0 for label in solution_labels]
+        for cause in causes
+    ],
+    columns=solution_labels,
+    index=causes
 )
-with st.expander("모델 학습 데이터 확인"):
-    st.dataframe(
-        training_df.reset_index(drop=True),
-        use_container_width=True,
-        hide_index=True,
-    )
 
-# ---------------------------------------------------------
-# 7. 모델 생성 및 교차 검증
-# ---------------------------------------------------------
-st.subheader("모델 학습 및 평가")
-
-def make_tree():
-    """8개 출력 레이블을 동시에 예측하는 다중 출력 의사결정나무."""
-    return DecisionTreeClassifier(
-        max_depth=None,
-        min_samples_leaf=1,
-        random_state=42,
-    )
+with st.expander("모델 학습에 사용하는 데이터 확인"):
+    st.write("입력 데이터 (X): 원인을 원-핫 인코딩한 값")
+    st.dataframe(X, use_container_width=True)
+    st.write("정답 데이터 (y): 원인별 해결 방안 연결 기준")
+    st.dataframe(y, use_container_width=True)
 
 
-def make_forest():
-    """8개 출력 레이블을 동시에 예측하는 다중 출력 랜덤 포레스트."""
-    return RandomForestClassifier(
+# --------------------------------------------------
+# 모델 및 교차 검증
+# --------------------------------------------------
+
+models = {
+    "의사결정나무": DecisionTreeClassifier(random_state=42),
+    "랜덤 포레스트": RandomForestClassifier(
         n_estimators=300,
-        max_depth=None,
-        min_samples_leaf=1,
-        max_features=1.0,
-        random_state=42,
-        n_jobs=-1,
+        random_state=42
     )
-
-
-model_factories = {
-    "의사결정나무": make_tree,
-    "랜덤 포레스트": make_forest,
 }
 
-# 원인 데이터가 7개뿐이므로 임의의 train/test 분할 대신 Leave-One-Out을 사용합니다.
-# 매 반복에서 원인 하나를 제외하고 나머지 6개 원인으로 학습한 뒤 제외한 원인을 예측합니다.
-# 단, 제외된 원인의 원-핫 특성은 학습 과정에서 한 번도 등장하지 않으므로
-# 이는 새로운 원인에 대한 일반화가 어렵다는 점을 보여주는 제한적인 평가입니다.
-loo = LeaveOneOut()
-cv_predictions = {}
-
-try:
-    for model_name, factory in model_factories.items():
-        fold_predictions = []
-
-        for train_index, test_index in loo.split(X):
-            X_train = X.iloc[train_index]
-            X_test = X.iloc[test_index]
-            y_train = y.iloc[train_index]
-
-            fold_model = factory()
-            fold_model.fit(X_train, y_train)
-            fold_pred = fold_model.predict(X_test)
-            fold_predictions.append(fold_pred[0])
-
-        cv_predictions[model_name] = pd.DataFrame(
-            fold_predictions,
-            index=cause_list,
-            columns=solution_labels,
-        ).astype(int)
-
-    # 실제 앱의 사용자 입력 예측에는 7개 원인 전체로 다시 학습한 모델을 사용합니다.
-    final_models = {}
-    for model_name, factory in model_factories.items():
-        final_model = factory()
-        final_model.fit(X, y)
-        final_models[model_name] = final_model
-
-except Exception as exc:
-    st.error("모델을 학습하거나 평가하는 중 오류가 발생했습니다.")
-    st.exception(exc)
-    st.stop()
-
-# ---------------------------------------------------------
-# 8. 모델 성능 비교
-# ---------------------------------------------------------
-st.subheader("모델별 성능 비교")
-
-st.info(
-    "평가 방식: 원인 7개 중 하나씩 제외하는 Leave-One-Out 교차 검증을 적용했습니다. "
-    "다만 제외된 원인은 학습 데이터에 없는 원-핫 입력이 되므로, 이 점수는 "
-    "새로운 원인에 대한 성능을 안정적으로 증명하는 값이 아닙니다. "
-    "현재 데이터로는 독립적인 실제 검증 데이터도 확보할 수 없습니다."
-)
-
-metric_rows = []
-for model_name, pred_df in cv_predictions.items():
-    y_true = y.to_numpy(dtype=int)
-    y_pred = pred_df.to_numpy(dtype=int)
-
-    metric_rows.append(
-        {
-            "모델": model_name,
-            "정확도(Subset Accuracy)": accuracy_score(y_true, y_pred),
-            "정밀도(Micro)": precision_score(
-                y_true, y_pred, average="micro", zero_division=0
-            ),
-            "재현율(Micro)": recall_score(
-                y_true, y_pred, average="micro", zero_division=0
-            ),
-            "F1-score(Micro)": f1_score(
-                y_true, y_pred, average="micro", zero_division=0
-            ),
-            "Hamming Loss": hamming_loss(y_true, y_pred),
-        }
+def evaluate_with_loo(model, X_data, y_data):
+    """Leave-One-Out 교차 검증으로 각 모델의 예측값을 만든다."""
+    loo = LeaveOneOut()
+    predictions = pd.DataFrame(
+        0,
+        index=y_data.index,
+        columns=y_data.columns,
+        dtype=int
     )
 
-metrics_df = pd.DataFrame(metric_rows).set_index("모델")
+    for train_index, test_index in loo.split(X_data):
+        X_train = X_data.iloc[train_index]
+        X_test = X_data.iloc[test_index]
+        y_train = y_data.iloc[train_index]
+
+        fold_model = model.__class__(**model.get_params())
+        fold_model.fit(X_train, y_train)
+
+        fold_prediction = fold_model.predict(X_test)
+        predictions.iloc[test_index, :] = fold_prediction
+
+    return predictions
+
+
+def calculate_metrics(y_true, y_pred):
+    """다중 출력 분류에 사용할 전체 평가 지표를 계산한다."""
+    return {
+        "Subset Accuracy": accuracy_score(y_true, y_pred),
+        "Micro Precision": precision_score(
+            y_true, y_pred, average="micro", zero_division=0
+        ),
+        "Micro Recall": recall_score(
+            y_true, y_pred, average="micro", zero_division=0
+        ),
+        "Micro F1-score": f1_score(
+            y_true, y_pred, average="micro", zero_division=0
+        ),
+        "Macro Precision": precision_score(
+            y_true, y_pred, average="macro", zero_division=0
+        ),
+        "Macro Recall": recall_score(
+            y_true, y_pred, average="macro", zero_division=0
+        ),
+        "Macro F1-score": f1_score(
+            y_true, y_pred, average="macro", zero_division=0
+        ),
+        "Hamming Loss": hamming_loss(y_true, y_pred)
+    }
+
+
+with st.spinner("두 분류 모델의 교차 검증을 진행하고 있습니다..."):
+    cv_predictions = {}
+    metric_results = {}
+
+    for model_name, model in models.items():
+        cv_pred = evaluate_with_loo(model, X, y)
+        cv_predictions[model_name] = cv_pred
+        metric_results[model_name] = calculate_metrics(y, cv_pred)
+
+metrics_df = pd.DataFrame(metric_results).T
+
+st.subheader("모델별 전체 평가 지표")
 st.dataframe(
     metrics_df.style.format("{:.3f}"),
-    use_container_width=True,
+    use_container_width=True
 )
 
-metric_long = (
-    metrics_df.reset_index()
+st.caption(
+    "Subset Accuracy는 모든 해결 방안을 한꺼번에 정확히 맞힌 비율이며, "
+    "Hamming Loss는 전체 예측 항목 중 틀린 항목의 비율이다."
+)
+
+
+# --------------------------------------------------
+# 그래프 4. 전체 모델 성능 비교
+# --------------------------------------------------
+
+st.subheader("① 전체 모델 성능 비교")
+
+overall_metric_names = [
+    "Subset Accuracy",
+    "Micro Precision",
+    "Micro Recall",
+    "Micro F1-score",
+    "Macro Precision",
+    "Macro Recall",
+    "Macro F1-score"
+]
+
+overall_plot_df = (
+    metrics_df[overall_metric_names]
+    .reset_index(names="모델")
     .melt(
         id_vars="모델",
         var_name="평가 지표",
-        value_name="점수",
+        value_name="점수"
     )
 )
-fig = px.bar(
-    metric_long,
+
+fig4 = px.bar(
+    overall_plot_df,
     x="평가 지표",
     y="점수",
     color="모델",
     barmode="group",
+    title="의사결정나무와 랜덤 포레스트의 전체 성능 비교",
     text_auto=".3f",
-    title="의사결정나무와 랜덤 포레스트 성능 비교",
-)
-st.plotly_chart(fig, use_container_width=True)
-
-st.caption(
-    "Subset Accuracy·정밀도·재현율·F1-score는 높을수록 좋고, "
-    "Hamming Loss는 낮을수록 좋습니다. 모든 점수는 사용자가 정한 기준에 대한 "
-    "Leave-One-Out 평가 결과이며 실제 건축적 효과를 뜻하지 않습니다."
+    labels={"점수": "평가 점수"}
 )
 
-# ---------------------------------------------------------
-# 9. 해결 방안별 평가 결과
-# ---------------------------------------------------------
-st.subheader("해결 방안별 분류 평가")
+fig4.update_layout(
+    yaxis=dict(range=[0, 1.05]),
+    xaxis_tickangle=-25,
+    legend_title="모델"
+)
+
+st.plotly_chart(fig4, use_container_width=True)
+
+
+# --------------------------------------------------
+# 그래프 5. Hamming Loss 비교
+# --------------------------------------------------
+
+st.subheader("② Hamming Loss 비교")
+
+hamming_df = (
+    metrics_df[["Hamming Loss"]]
+    .reset_index(names="모델")
+)
+
+fig5 = px.bar(
+    hamming_df,
+    x="모델",
+    y="Hamming Loss",
+    color="모델",
+    text_auto=".3f",
+    title="모델별 Hamming Loss",
+    labels={"Hamming Loss": "오분류 비율"}
+)
+
+fig5.update_layout(
+    yaxis=dict(range=[0, 1.05]),
+    showlegend=False
+)
+
+st.plotly_chart(fig5, use_container_width=True)
+
+st.caption("Hamming Loss는 낮을수록 예측 오류가 적다는 뜻이다.")
+
+
+# --------------------------------------------------
+# 그래프 6. 해결 방안별 F1-score 비교
+# --------------------------------------------------
+
+st.subheader("③ 해결 방안별 F1-score 비교")
 
 per_label_rows = []
-for model_name, pred_df in cv_predictions.items():
-    y_true = y.to_numpy(dtype=int)
-    y_pred = pred_df.to_numpy(dtype=int)
 
-    for i, solution in enumerate(solution_labels):
-        per_label_rows.append(
-            {
-                "모델": model_name,
-                "해결 방안": solution,
-                "정밀도": precision_score(
-                    y_true[:, i], y_pred[:, i], zero_division=0
-                ),
-                "재현율": recall_score(
-                    y_true[:, i], y_pred[:, i], zero_division=0
-                ),
-                "F1-score": f1_score(
-                    y_true[:, i], y_pred[:, i], zero_division=0
-                ),
-            }
+for model_name, prediction in cv_predictions.items():
+    for label in solution_labels:
+        score = f1_score(
+            y[label],
+            prediction[label],
+            zero_division=0
         )
+        per_label_rows.append({
+            "모델": model_name,
+            "해결 방안": label,
+            "F1-score": score
+        })
 
 per_label_df = pd.DataFrame(per_label_rows)
-st.dataframe(
-    per_label_df.style.format(
-        {
-            "정밀도": "{:.3f}",
-            "재현율": "{:.3f}",
-            "F1-score": "{:.3f}",
-        }
-    ),
-    use_container_width=True,
-    hide_index=True,
-)
 
-per_label_long = per_label_df.melt(
-    id_vars=["모델", "해결 방안"],
-    value_vars=["정밀도", "재현율", "F1-score"],
-    var_name="평가 지표",
-    value_name="점수",
-)
-fig = px.bar(
-    per_label_long,
+fig6 = px.bar(
+    per_label_df,
     x="해결 방안",
-    y="점수",
+    y="F1-score",
     color="모델",
     barmode="group",
-    facet_row="평가 지표",
-    title="해결 방안별 평가 지표 비교",
+    title="해결 방안별 F1-score 비교",
+    text_auto=".3f",
+    labels={"F1-score": "F1-score"}
 )
-fig.update_yaxes(range=[0, 1])
-fig.update_xaxes(tickangle=-30)
-st.plotly_chart(fig, use_container_width=True)
 
-# ---------------------------------------------------------
-# 10. 교차 검증 예측 결과 시각화
-# ---------------------------------------------------------
-st.subheader("원인별 기준과 교차 검증 예측 비교")
+fig6.update_layout(
+    yaxis=dict(range=[0, 1.05]),
+    xaxis_tickangle=-35,
+    legend_title="모델"
+)
 
-chosen_eval_model = st.selectbox(
+st.plotly_chart(fig6, use_container_width=True)
+
+st.caption(
+    "특정 해결 방안의 점수가 0이라면 교차 검증에서 해당 항목을 "
+    "정확히 예측하지 못했다는 뜻이다. 이는 실제 해결 효과가 없다는 뜻이 아니다."
+)
+
+
+# --------------------------------------------------
+# 그래프 7. 기준과 교차 검증 예측 비교
+# --------------------------------------------------
+
+st.subheader("④ 원인별 정답 기준과 교차 검증 예측 비교")
+
+selected_model_for_heatmap = st.selectbox(
     "비교할 모델 선택",
-    list(final_models.keys()),
-    key="evaluation_model",
+    list(models.keys()),
+    key="heatmap_model"
 )
-selected_cv_pred = cv_predictions[chosen_eval_model]
 
-comparison_heatmap = pd.concat(
-    {
-        "직접 설정한 기준": y,
-        "교차 검증 예측": selected_cv_pred,
-    },
-    names=["구분"],
+heatmap_pred = cv_predictions[selected_model_for_heatmap]
+
+heatmap_df = pd.concat(
+    [
+        y.assign(구분="직접 설정한 기준"),
+        heatmap_pred.assign(구분="교차 검증 예측")
+    ]
 )
-fig = px.imshow(
-    comparison_heatmap,
+
+heatmap_long = heatmap_df.reset_index(names="층간소음 원인").melt(
+    id_vars=["층간소음 원인", "구분"],
+    value_vars=solution_labels,
+    var_name="건축적 해결 방안",
+    value_name="값"
+)
+
+heatmap_long["행"] = (
+    heatmap_long["구분"] + " - " + heatmap_long["층간소음 원인"]
+)
+
+fig7 = px.imshow(
+    heatmap_long.pivot(
+        index="행",
+        columns="건축적 해결 방안",
+        values="값"
+    ),
     text_auto=True,
     aspect="auto",
     color_continuous_scale="Blues",
-    labels={
-        "x": "건축적 해결 방안",
-        "y": "구분 및 층간소음 원인",
-        "color": "적용 여부",
-    },
-    title=f"{chosen_eval_model}: 기준과 교차 검증 예측 비교",
+    zmin=0,
+    zmax=1,
+    title=f"{selected_model_for_heatmap}: 기준과 교차 검증 예측 비교"
 )
-fig.update_xaxes(tickangle=-35)
-st.plotly_chart(fig, use_container_width=True)
 
-# ---------------------------------------------------------
-# 11. 의사결정나무 구조 시각화
-# ---------------------------------------------------------
-st.subheader("의사결정나무 구조")
+fig7.update_layout(
+    xaxis_title="건축적 해결 방안",
+    yaxis_title="층간소음 원인 및 구분",
+    coloraxis_colorbar_title="분류값"
+)
 
-st.write(
-    "입력 특성은 원인별 원-핫 인코딩 값입니다. "
-    "C1~C7은 아래 표에 표시된 원인 순서와 연결됩니다."
-)
-feature_map = pd.DataFrame(
-    {
-        "특성 이름": [f"C{i + 1}" for i in range(len(cause_list))],
-        "층간소음 원인": cause_list,
-    }
-)
-st.dataframe(feature_map, use_container_width=True, hide_index=True)
+st.plotly_chart(fig7, use_container_width=True)
 
-fig_tree, ax = plt.subplots(figsize=(18, 9))
-plot_tree(
-    final_models["의사결정나무"],
-    feature_names=[f"C{i + 1}" for i in range(len(cause_list))],
-    filled=True,
-    rounded=True,
-    impurity=False,
-    fontsize=8,
-    ax=ax,
-)
-ax.set_title("Decision Tree - Multi-output Classification")
-st.pyplot(fig_tree, use_container_width=True)
-plt.close(fig_tree)
 
-# ---------------------------------------------------------
-# 12. 사용자 입력 및 예측
-# ---------------------------------------------------------
-st.header("6. 사용자 입력 및 건축적 해결 방안 예측")
-st.write(
-    "층간소음 원인을 선택하면 의사결정나무와 랜덤 포레스트가 "
-    "각각 예측한 해결 방안을 확인할 수 있습니다."
-)
+# --------------------------------------------------
+# 사용자가 원인을 선택하고 해결 방안 예측
+# --------------------------------------------------
+
+st.markdown("---")
+st.header("6. 층간소음 원인 입력 및 해결 방안 예측")
+
+st.write("""
+층간소음 원인을 선택하면 전체 7개 원인으로 학습한 두 모델이
+해당 원인에 적합하다고 예측하는 건축적 해결 방안을 보여준다.
+""")
 
 selected_cause = st.selectbox(
-    "층간소음 원인 선택",
-    options=cause_list,
-    key="selected_noise_cause",
+    "층간소음 원인을 선택하세요.",
+    causes
 )
 
-# 선택한 원인을 학습 때와 같은 원-핫 형식으로 변환합니다.
-input_vector = pd.DataFrame(
-    [
-        [int(selected_cause == cause) for cause in cause_list]
-    ],
-    columns=X.columns,
+# 전체 데이터로 최종 모델 학습
+final_models = {}
+
+for model_name, model in models.items():
+    final_model = model.__class__(**model.get_params())
+    final_model.fit(X, y)
+    final_models[model_name] = final_model
+
+input_data = pd.DataFrame(
+    [[1 if cause == selected_cause else 0 for cause in causes]],
+    columns=causes
 )
 
-def extract_positive_probabilities(model, input_data, output_names):
-    """
-    다중 출력 분류기의 predict_proba 결과에서 각 레이블의
-    '적용(1)' 확률을 추출합니다. 해당 클래스가 없을 때도 오류가 나지 않게 처리합니다.
-    """
-    probability_list = model.predict_proba(input_data)
-    positive_probabilities = []
+col1, col2 = st.columns(2)
 
-    for i, probabilities in enumerate(probability_list):
-        classes = model.classes_[i]
-        if 1 in classes:
-            positive_index = list(classes).index(1)
-            positive_probabilities.append(float(probabilities[0][positive_index]))
+for column, model_name in zip(
+    [col1, col2],
+    ["의사결정나무", "랜덤 포레스트"]
+):
+    with column:
+        st.subheader(model_name)
+
+        prediction = final_models[model_name].predict(input_data)[0]
+        predicted_solutions = [
+            solution_labels[i]
+            for i, value in enumerate(prediction)
+            if value == 1
+        ]
+
+        if predicted_solutions:
+            for solution in predicted_solutions:
+                st.success(solution)
         else:
-            positive_probabilities.append(0.0)
+            st.warning("예측된 해결 방안이 없습니다.")
 
-    return pd.Series(positive_probabilities, index=output_names)
+        st.write("해결 방안별 예측 확률")
 
+        probability_list = final_models[model_name].predict_proba(
+            input_data
+        )
 
-def get_selected_solutions(prediction):
-    return [
-        solution_labels[i]
-        for i, value in enumerate(prediction)
-        if int(value) == 1
-    ]
+        probability_values = []
 
+        for i, probabilities in enumerate(probability_list):
+            classes = final_models[model_name].classes_[i]
+            if 1 in classes:
+                positive_index = list(classes).index(1)
+                probability = probabilities[0][positive_index]
+            else:
+                probability = 0.0
 
-tree_model = final_models["의사결정나무"]
-forest_model = final_models["랜덤 포레스트"]
+            probability_values.append(probability)
 
-tree_prediction = tree_model.predict(input_vector)[0].astype(int)
-forest_prediction = forest_model.predict(input_vector)[0].astype(int)
-reference_prediction = y.loc[selected_cause].to_numpy(dtype=int)
+        probability_df = pd.DataFrame({
+            "건축적 해결 방안": solution_labels,
+            "예측 확률": probability_values
+        })
 
-tree_probabilities = extract_positive_probabilities(
-    tree_model, input_vector, solution_labels
-)
-forest_probabilities = extract_positive_probabilities(
-    forest_model, input_vector, solution_labels
-)
+        probability_fig = px.bar(
+            probability_df,
+            x="예측 확률",
+            y="건축적 해결 방안",
+            orientation="h",
+            range_x=[0, 1],
+            text=probability_df["예측 확률"].map(
+                lambda value: f"{value:.2f}"
+            )
+        )
 
-tree_solutions = get_selected_solutions(tree_prediction)
-forest_solutions = get_selected_solutions(forest_prediction)
-reference_solutions = get_selected_solutions(reference_prediction)
+        probability_fig.update_layout(
+            xaxis_title="예측 확률",
+            yaxis_title="",
+            showlegend=False,
+            height=350
+        )
 
-col_tree, col_forest = st.columns(2)
+        st.plotly_chart(
+            probability_fig,
+            use_container_width=True
+        )
 
-with col_tree:
-    st.markdown("#### 의사결정나무 예측")
-    if tree_solutions:
-        for solution in tree_solutions:
-            st.success(f"✓ {solution}")
-    else:
-        st.warning("예측된 해결 방안이 없습니다.")
-
-with col_forest:
-    st.markdown("#### 랜덤 포레스트 예측")
-    if forest_solutions:
-        for solution in forest_solutions:
-            st.success(f"✓ {solution}")
-    else:
-        st.warning("예측된 해결 방안이 없습니다.")
-
-st.subheader("해결 방안별 예측 확률")
-probability_df = pd.DataFrame(
-    {
-        "해결 방안": solution_labels,
-        "의사결정나무": tree_probabilities.values,
-        "랜덤 포레스트": forest_probabilities.values,
-    }
-).melt(
-    id_vars="해결 방안",
-    var_name="모델",
-    value_name="적용 예측 확률",
-)
-fig = px.bar(
-    probability_df,
-    x="해결 방안",
-    y="적용 예측 확률",
-    color="모델",
-    barmode="group",
-    text=probability_df["적용 예측 확률"].map(lambda value: f"{value:.0%}"),
-    title="해결 방안별 적용 예측 확률",
-)
-fig.update_yaxes(range=[0, 1], tickformat=".0%")
-fig.update_xaxes(tickangle=-30)
-st.plotly_chart(fig, use_container_width=True)
-
-# ---------------------------------------------------------
-# 13. 직접 설정한 기준과 모델 예측 비교
-# ---------------------------------------------------------
 st.subheader("직접 설정한 기준과 모델 예측 비교")
 
-comparison_rows = []
-for i, solution in enumerate(solution_labels):
-    comparison_rows.append(
-        {
-            "건축적 해결 방안": solution,
-            "직접 설정한 기준": "적용" if reference_prediction[i] == 1 else "미적용",
-            "의사결정나무": "적용" if tree_prediction[i] == 1 else "미적용",
-            "랜덤 포레스트": "적용" if forest_prediction[i] == 1 else "미적용",
-            "의사결정나무 일치 여부": (
-                "일치"
-                if tree_prediction[i] == reference_prediction[i]
-                else "불일치"
-            ),
-            "랜덤 포레스트 일치 여부": (
-                "일치"
-                if forest_prediction[i] == reference_prediction[i]
-                else "불일치"
-            ),
-        }
-    )
+reference_solutions = mapping[selected_cause]
 
-comparison_df = pd.DataFrame(comparison_rows)
+comparison_rows = []
+
+for solution in solution_labels:
+    comparison_rows.append({
+        "건축적 해결 방안": solution,
+        "직접 설정한 기준": (
+            "적용" if solution in reference_solutions else "미적용"
+        ),
+        "의사결정나무 예측": (
+            "적용"
+            if final_models["의사결정나무"].predict(input_data)[0][
+                solution_labels.index(solution)
+            ] == 1
+            else "미적용"
+        ),
+        "랜덤 포레스트 예측": (
+            "적용"
+            if final_models["랜덤 포레스트"].predict(input_data)[0][
+                solution_labels.index(solution)
+            ] == 1
+            else "미적용"
+        )
+    })
+
 st.dataframe(
-    comparison_df,
+    pd.DataFrame(comparison_rows),
     use_container_width=True,
-    hide_index=True,
+    hide_index=True
 )
 
-st.subheader("사용자가 설정한 기준에 따른 건축적 해결 방안")
-st.write(f"선택한 원인: **{selected_cause}**")
-for solution in reference_solutions:
-    st.markdown(f"- **{solution}**")
 
-if (
-    tree_solutions == reference_solutions
-    and forest_solutions == reference_solutions
-):
-    st.success("두 모델의 예측이 사용자가 설정한 기준과 모두 일치합니다.")
-else:
-    st.warning(
-        "일부 모델의 예측이 직접 설정한 기준과 다릅니다. "
-        "위 비교표에서 차이가 발생한 해결 방안을 확인할 수 있습니다."
-    )
+# --------------------------------------------------
+# 모델의 한계 및 해석
+# --------------------------------------------------
 
-st.divider()
+st.markdown("---")
+st.header("7. 모델 해석 및 한계")
+
+st.write("""
+- 이 모델은 실제 건축물에서 해결 방안의 효과를 측정한 자료를 학습한 것이 아니다.
+- 원인별 해결 방안은 직접 설정한 기준이며, 모델은 이 기준을 학습하고 재현한다.
+- 학습 자료는 원인 7개이므로 데이터 수가 매우 적다.
+- Leave-One-Out 교차 검증은 원인 하나씩을 제외하고 학습하는 방식이다. 따라서 학습 과정에서 보지 못한 원인을 예측하는 상황이 되어 점수가 낮게 나타날 수 있다.
+- 그러므로 평가 점수는 실제 건축 현장에서의 해결 효과나 새로운 상황에 대한 일반화 성능을 증명하지 않는다.
+""")
+
+st.markdown("---")
+
+
+# --------------------------------------------------
+# 자료 출처
+# --------------------------------------------------
+
+st.subheader("📚 자료 출처")
+
+st.markdown(
+    "[한국환경공단 층간소음 원인별 분석 데이터](https://www.data.go.kr/data/15093156/fileData.do)"
+)
+
 st.caption(
-    "자료: 사용자가 제공한 한국환경공단 「층간소음 원인별 분석」(2012~2024) 자료. "
-    "건축적 해결 방안의 기준은 사용자가 직접 설정했습니다. "
-    "본 웹앱은 교육·탐구 목적이며 실제 건물의 소음 원인을 진단하거나 "
-    "해결 방안의 효과를 실증적으로 검증하는 도구가 아닙니다."
+    "※ 본 웹앱은 2012~2024년 층간소음 원인별 발생 데이터를 활용하였습니다. "
+    "건축적 해결 방안 연결 기준은 탐구를 위해 직접 설정하였습니다."
 )
